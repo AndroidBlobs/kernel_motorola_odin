@@ -94,6 +94,10 @@ static const char * const power_supply_typec_src_rp_text[] = {
 	"Rp-Default", "Rp-1.5A", "Rp-3A"
 };
 
+static char *charge_rate[] = {
+	"None", "Normal", "Weak", "Turbo"
+};
+
 static ssize_t power_supply_show_property(struct device *dev,
 					  struct device_attribute *attr,
 					  char *buf) {
@@ -124,6 +128,9 @@ static ssize_t power_supply_show_property(struct device *dev,
 	else if (off == POWER_SUPPLY_PROP_CHARGE_TYPE)
 		return sprintf(buf, "%s\n",
 			       power_supply_charge_type_text[value.intval]);
+	else if (off == POWER_SUPPLY_PROP_CHARGE_RATE)
+		return snprintf(buf, strlen(charge_rate[value.intval]) + 2,
+				"%s\n", charge_rate[value.intval]);
 	else if (off == POWER_SUPPLY_PROP_HEALTH)
 		return sprintf(buf, "%s\n",
 			       power_supply_health_text[value.intval]);
@@ -250,6 +257,7 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(charge_empty),
 	POWER_SUPPLY_ATTR(charge_now),
 	POWER_SUPPLY_ATTR(charge_avg),
+	POWER_SUPPLY_ATTR(charge_rate),
 	POWER_SUPPLY_ATTR(charge_counter),
 	POWER_SUPPLY_ATTR(constant_charge_current),
 	POWER_SUPPLY_ATTR(constant_charge_current_max),
@@ -314,6 +322,7 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(temp_cold),
 	POWER_SUPPLY_ATTR(temp_hot),
 	POWER_SUPPLY_ATTR(system_temp_level),
+	POWER_SUPPLY_ATTR(num_system_temp_levels),
 	POWER_SUPPLY_ATTR(resistance),
 	POWER_SUPPLY_ATTR(resistance_capacitive),
 	POWER_SUPPLY_ATTR(resistance_id),
@@ -394,8 +403,7 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(chip_version),
 	POWER_SUPPLY_ATTR(qc_opti_disable),
 	POWER_SUPPLY_ATTR(therm_icl_limit),
-	POWER_SUPPLY_ATTR(voltage_max_limit),
-	POWER_SUPPLY_ATTR(dc_reset),
+	POWER_SUPPLY_ATTR(vbus_conflict),
 	/* Charge pump properties */
 	POWER_SUPPLY_ATTR(cp_status1),
 	POWER_SUPPLY_ATTR(cp_status2),
@@ -406,6 +414,21 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(cp_toggle_switcher),
 	POWER_SUPPLY_ATTR(cp_irq_status),
 	POWER_SUPPLY_ATTR(cp_ilim),
+	POWER_SUPPLY_ATTR(internal_send),
+	POWER_SUPPLY_ATTR(internal_receive),
+	POWER_SUPPLY_ATTR(external),
+	POWER_SUPPLY_ATTR(current_flow),
+	POWER_SUPPLY_ATTR(max_input_current),
+	POWER_SUPPLY_ATTR(max_output_current),
+	POWER_SUPPLY_ATTR(external_present),
+	POWER_SUPPLY_ATTR(power_required),
+	POWER_SUPPLY_ATTR(power_available),
+	POWER_SUPPLY_ATTR(power_source),
+	POWER_SUPPLY_ATTR(max_output_voltage),
+	POWER_SUPPLY_ATTR(output_voltage),
+	POWER_SUPPLY_ATTR(max_input_voltage),
+	POWER_SUPPLY_ATTR(input_voltage),
+	POWER_SUPPLY_ATTR(age),
 	/* Local extensions of type int64_t */
 	POWER_SUPPLY_ATTR(charge_counter_ext),
 	/* Properties of type `const char *' */
