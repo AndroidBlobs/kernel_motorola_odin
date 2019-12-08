@@ -1,4 +1,4 @@
-/* Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2017-2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -19,6 +19,8 @@
 #include "cam_sync_util.h"
 #include "cam_debug_util.h"
 #include "cam_common_util.h"
+
+#define CAM_SYNC_MAX_OPEN_CNT 2
 
 struct sync_device *sync_dev;
 
@@ -196,8 +198,8 @@ int cam_sync_signal(int32_t sync_obj, uint32_t status)
 	if (row->state != CAM_SYNC_STATE_ACTIVE) {
 		spin_unlock_bh(&sync_dev->row_spinlocks[sync_obj]);
 		CAM_ERR(CAM_SYNC,
-			"Sync object already signaled sync_obj = %d state = %d",
-			sync_obj, row->state);
+			"Error: Sync object already signaled sync_obj = %d",
+			sync_obj);
 		return -EALREADY;
 	}
 
@@ -322,9 +324,9 @@ int cam_sync_get_obj_ref(int32_t sync_obj)
 
 	if (row->state != CAM_SYNC_STATE_ACTIVE) {
 		spin_unlock(&sync_dev->row_spinlocks[sync_obj]);
-		CAM_ERR_RATE_LIMIT_CUSTOM(CAM_SYNC, 1, 5,
-			"accessing an uninitialized sync obj = %d state = %d",
-			sync_obj, row->state);
+		CAM_ERR(CAM_SYNC,
+			"Error: accessing an uninitialized sync obj = %d",
+			sync_obj);
 		return -EINVAL;
 	}
 
@@ -433,7 +435,6 @@ static int cam_sync_handle_create(struct cam_private_ioctl_arg *k_ioctl)
 
 static int cam_sync_handle_signal(struct cam_private_ioctl_arg *k_ioctl)
 {
-	int rc = 0;
 	struct cam_sync_signal sync_signal;
 
 	if (k_ioctl->size != sizeof(struct cam_sync_signal))
@@ -448,14 +449,7 @@ static int cam_sync_handle_signal(struct cam_private_ioctl_arg *k_ioctl)
 		return -EFAULT;
 
 	/* need to get ref for UMD signaled fences */
-	rc = cam_sync_get_obj_ref(sync_signal.sync_obj);
-	if (rc) {
-		CAM_DBG(CAM_SYNC,
-			"Error: cannot signal an uninitialized sync obj = %d",
-			sync_signal.sync_obj);
-		return rc;
-	}
-
+	cam_sync_get_obj_ref(sync_signal.sync_obj);
 	return cam_sync_signal(sync_signal.sync_obj,
 		sync_signal.sync_state);
 }
@@ -767,7 +761,7 @@ static int cam_sync_open(struct file *filep)
 	}
 
 	mutex_lock(&sync_dev->table_lock);
-	if (sync_dev->open_cnt >= 1) {
+	if (sync_dev->open_cnt >= CAM_SYNC_MAX_OPEN_CNT) {
 		mutex_unlock(&sync_dev->table_lock);
 		return -EALREADY;
 	}
@@ -776,7 +770,7 @@ static int cam_sync_open(struct file *filep)
 	if (!rc) {
 		sync_dev->open_cnt++;
 		spin_lock_bh(&sync_dev->cam_sync_eventq_lock);
-		sync_dev->cam_sync_eventq = filep->private_data;
+		sync_dev->cam_sync_eventq_exists = true;
 		spin_unlock_bh(&sync_dev->cam_sync_eventq_lock);
 	} else {
 		CAM_ERR(CAM_SYNC, "v4l2_fh_open failed : %d", rc);
@@ -844,7 +838,9 @@ static int cam_sync_close(struct file *filep)
 	}
 	mutex_unlock(&sync_dev->table_lock);
 	spin_lock_bh(&sync_dev->cam_sync_eventq_lock);
-	sync_dev->cam_sync_eventq = NULL;
+	if (!sync_dev->open_cnt) {
+		sync_dev->cam_sync_eventq_exists = false;
+	}
 	spin_unlock_bh(&sync_dev->cam_sync_eventq_lock);
 	v4l2_fh_release(filep);
 
