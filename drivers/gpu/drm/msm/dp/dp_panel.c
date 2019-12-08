@@ -27,6 +27,12 @@
 #define VSC_EXT_VESA_SDP_SUPPORTED BIT(4)
 #define VSC_EXT_VESA_SDP_CHAINING_SUPPORTED BIT(5)
 
+#ifdef CONFIG_MOD_DISPLAY
+extern int dp_fix_linkrate;
+
+extern unsigned char* dp_bridge_mod_dispalay_get_edid(int size);
+#endif
+
 enum dp_panel_hdr_pixel_encoding {
 	RGB,
 	YCbCr444,
@@ -1630,6 +1636,13 @@ static int dp_panel_read_dpcd(struct dp_panel *dp_panel, bool multi_func)
 	print_hex_dump(KERN_DEBUG, "[drm-dp] SINK DPCD: ",
 		DUMP_PREFIX_NONE, 8, 1, dp_panel->dpcd, rlen, false);
 
+#ifdef CONFIG_MOD_DISPLAY
+	if (dp_fix_linkrate) {
+		dp_panel->dpcd[DP_MAX_LINK_RATE] = DP_LINK_BW_1_62;//force 1.62
+		pr_info("%s linkrate forece 1.62G\n", __func__);
+	}
+#endif
+
 	rlen = drm_dp_dpcd_read(panel->aux->drm_aux,
 		DPRX_FEATURE_ENUMERATION_LIST, &rx_feature, 1);
 	if (rlen != 1) {
@@ -1782,11 +1795,27 @@ static int dp_panel_read_edid(struct dp_panel *dp_panel,
 	sde_get_edid(connector, &panel->aux->drm_aux->ddc,
 		(void **)&dp_panel->edid_ctrl);
 	if (!dp_panel->edid_ctrl->edid) {
+#ifdef CONFIG_MOD_DISPLAY
+		pr_err("AUX EDID read failed, try mods greybus read\n");
+		dp_panel->edid_ctrl->edid =
+				(struct edid*) dp_bridge_mod_dispalay_get_edid( sizeof(struct edid));
+		if(!dp_panel->edid_ctrl->edid) {
+			pr_err("greybus EDID read failed\n");
+			ret = -EINVAL;
+			goto end;
+		}
+
+		print_hex_dump(KERN_DEBUG, "[drm-dp]edid : ",
+			DUMP_PREFIX_NONE, 8, 1,
+			dp_panel->edid_ctrl->edid, sizeof(struct edid), false);
+#else
 		pr_err("EDID read failed\n");
 		ret = -EINVAL;
 		goto end;
+#endif
 	}
 end:
+
 	edid = dp_panel->edid_ctrl->edid;
 	dp_panel->audio_supported = drm_detect_monitor_audio(edid);
 
@@ -2585,10 +2614,39 @@ static void dp_panel_config_misc(struct dp_panel *dp_panel)
 
 	misc_val = cc;
 	misc_val |= (tb << 5);
+
+#ifdef CONFIG_MOD_DISPLAY
+	misc_val &= (~BIT(0)); /* Configure clock to ansynchronous mode */
+	pr_info("disable sync mode 0x%x\n", misc_val);
+#else
 	misc_val |= BIT(0); /* Configure clock to synchronous mode */
+#endif
 
 	catalog->misc_val = misc_val;
 	catalog->config_misc(catalog);
+}
+
+static bool dp_panel_use_fixed_nvid(struct dp_panel *dp_panel)
+{
+	u8 *dpcd = dp_panel->dpcd;
+	struct sde_connector *c_conn = to_sde_connector(dp_panel->connector);
+
+	/* use fixe mvid and nvid for MST streams */
+	if (c_conn->mst_port)
+		return true;
+
+	/*
+	 * For better interop experience, used a fixed NVID=0x8000
+	 * whenever connected to a VGA dongle downstream.
+	 */
+	if (dpcd[DP_DOWNSTREAMPORT_PRESENT] & DP_DWN_STRM_PORT_PRESENT) {
+		u8 type = dpcd[DP_DOWNSTREAMPORT_PRESENT] &
+			DP_DWN_STRM_PORT_TYPE_MASK;
+		if (type == DP_DWN_STRM_PORT_TYPE_ANALOG)
+			return true;
+	}
+
+	return false;
 }
 
 static void dp_panel_config_msa(struct dp_panel *dp_panel)
@@ -2597,16 +2655,18 @@ static void dp_panel_config_msa(struct dp_panel *dp_panel)
 	struct dp_catalog_panel *catalog;
 	u32 rate;
 	u32 stream_rate_khz;
+	bool fixed_nvid;
 
 	panel = container_of(dp_panel, struct dp_panel_private, dp_panel);
 	catalog = panel->catalog;
 
 	catalog->widebus_en = dp_panel->widebus_en;
 
+	fixed_nvid = dp_panel_use_fixed_nvid(dp_panel);
 	rate = drm_dp_bw_code_to_link_rate(panel->link->link_params.bw_code);
 	stream_rate_khz = dp_panel->pinfo.pixel_clk_khz;
 
-	catalog->config_msa(catalog, rate, stream_rate_khz);
+	catalog->config_msa(catalog, rate, stream_rate_khz, fixed_nvid);
 }
 
 static int dp_panel_hw_cfg(struct dp_panel *dp_panel, bool enable)

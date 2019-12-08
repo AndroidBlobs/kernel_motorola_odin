@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -123,7 +123,7 @@ static int dp_power_pinctrl_set(struct dp_power_private *power, bool active)
 
 	parser = power->parser;
 
-	if (IS_ERR_OR_NULL(parser->pinctrl.pin) || power->dp_power.sim_mode)
+	if (IS_ERR_OR_NULL(parser->pinctrl.pin))
 		return 0;
 
 	if (parser->no_aux_switch && parser->lphw_hpd) {
@@ -368,7 +368,7 @@ static int dp_power_request_gpios(struct dp_power_private *power)
 	struct device *dev;
 	struct dss_module_power *mp;
 	static const char * const gpio_names[] = {
-		"aux_enable", "aux_sel", "usbplug_cc",
+		"aux_enable", "aux_sel", "usbplug_cc", "mux_sel",
 	};
 
 	if (!power) {
@@ -457,7 +457,7 @@ static int dp_power_config_gpios(struct dp_power_private *power, bool flip,
 	} else {
 		for (i = 0; i < mp->num_gpio; i++) {
 			if (gpio_is_valid(config[i].gpio)) {
-				gpio_set_value(config[i].gpio, 0);
+				gpio_set_value(config[i].gpio, !config[i].value);
 				gpio_free(config[i].gpio);
 			}
 		}
