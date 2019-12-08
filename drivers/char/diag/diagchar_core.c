@@ -169,6 +169,7 @@ void *diag_ipc_log;
 #endif
 
 static void diag_md_session_close(int pid);
+extern uint16_t md_support;
 
 /*
  * Returns the next delayed rsp id. If wrapping is enabled,
@@ -558,8 +559,8 @@ static int diagchar_close(struct inode *inode, struct file *file)
 {
 	int ret;
 
-	DIAG_LOG(DIAG_DEBUG_USERSPACE, "diag: %s process exit with pid = %d\n",
-		current->comm, current->tgid);
+	DIAG_LOG(DIAG_DEBUG_USERSPACE, "diag: process exit %s\n",
+		current->comm);
 	ret = diag_remove_client_entry(file);
 
 	return ret;
@@ -1429,6 +1430,15 @@ static void diag_md_session_close(int pid)
 	DIAG_LOG(DIAG_DEBUG_USERSPACE, "cleared up session\n");
 }
 
+static int diag_ioctl_md_support_list(unsigned long ioarg)
+{
+	if (copy_to_user((void __user *)ioarg, &md_support,
+			sizeof(md_support)))
+		return -EFAULT;
+	else
+		return 0;
+}
+
 struct diag_md_session_t *diag_md_session_get_pid(int pid)
 {
 	int i;
@@ -1857,7 +1867,7 @@ static int diag_switch_logging(struct diag_logging_mode_param_t *param)
 		"Switch logging to %d mask:%0x\n", new_mode, peripheral_mask);
 
 	/* Update to take peripheral_mask */
-	if (new_mode != DIAG_MEMORY_DEVICE_MODE ||
+	if (new_mode != DIAG_MEMORY_DEVICE_MODE &&
 		new_mode != DIAG_MULTI_MODE) {
 		diag_update_real_time_vote(DIAG_PROC_MEMORY_DEVICE,
 					   MODE_REALTIME, ALL_PROC);
@@ -2707,6 +2717,10 @@ long diagchar_compat_ioctl(struct file *filp,
 			result = -EFAULT;
 		else
 			result = 0;
+
+	case DIAG_IOCTL_MD_SUPPORT_LIST:
+		result = diag_ioctl_md_support_list(ioarg);
+
 		break;
 	case DIAG_IOCTL_QUERY_MD_PID:
 		if (copy_from_user((void *)&pid_query, (void __user *)ioarg,
@@ -2884,6 +2898,8 @@ long diagchar_ioctl(struct file *filp,
 		else
 			result = 0;
 		break;
+	case DIAG_IOCTL_MD_SUPPORT_LIST:
+		result = diag_ioctl_md_support_list(ioarg);
 	}
 	return result;
 }
@@ -3418,8 +3434,6 @@ static ssize_t diagchar_read(struct file *file, char __user *buf, size_t count,
 	int exit_stat = 0;
 	int write_len = 0;
 	struct diag_md_session_t *session_info = NULL;
-	struct pid *pid_struct = NULL;
-	struct task_struct *task_s = NULL;
 
 	mutex_lock(&driver->diagchar_mutex);
 	for (i = 0; i < driver->num_clients; i++)
@@ -3666,19 +3680,8 @@ exit:
 		list_for_each_safe(start, temp, &driver->dci_client_list) {
 			entry = list_entry(start, struct diag_dci_client_tbl,
 									track);
-			pid_struct = find_get_pid(entry->tgid);
-			if (!pid_struct)
+			if (entry->client->tgid != current->tgid)
 				continue;
-			task_s = get_pid_task(pid_struct, PIDTYPE_PID);
-			if (!task_s) {
-				DIAG_LOG(DIAG_DEBUG_DCI,
-				"diag: valid task doesn't exist for pid = %d\n",
-				entry->tgid);
-				continue;
-			}
-			if (task_s == entry->client)
-				if (entry->client->tgid != current->tgid)
-					continue;
 			if (!entry->in_service)
 				continue;
 			if (copy_to_user(buf + ret, &data_type, sizeof(int))) {
