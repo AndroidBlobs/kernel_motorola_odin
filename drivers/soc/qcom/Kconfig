@@ -2,6 +2,30 @@
 # QCOM Soc drivers
 #
 menu "Qualcomm SoC drivers"
+config MMI_DEVICE_DTBS
+	depends on ARCH_QCOM
+	default n
+	bool "Motorola Mobility Device DTBs"
+	help
+		Only include Motorola device specific DTBs to limit the number that
+		get built during kernel compilation.
+
+config FOLES_DTB
+	depends on ARCH_QCOM
+	default n
+	bool "Foles DTBs"
+	help
+	  Only include Foles specific DTBs to limit the number that
+	  get built during kernel compilation.
+
+config PARKER_DTB
+	depends on ARCH_QCOM
+	default n
+	bool "Parker DTBs"
+	help
+	  Only include Parker specific DTBs to limit the number that
+	  get built during kernel compilation.
+
 config QCOM_MEM_OFFLINE
 	bool "Dynamic Memory Region Offline driver"
 	help
