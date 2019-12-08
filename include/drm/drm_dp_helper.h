@@ -124,7 +124,6 @@
 # define DP_DPCD_DISPLAY_CONTROL_CAPABLE     (1 << 3) /* edp v1.2 or higher */
 
 #define DP_TRAINING_AUX_RD_INTERVAL         0x00e   /* XXX 1.2? */
-# define DP_TRAINING_AUX_RD_MASK            0x7F    /* XXX 1.2? */
 
 #define DP_ADAPTER_CAP			    0x00f   /* 1.2 */
 # define DP_FORCE_LOAD_SENSE_CAP	    (1 << 0)
@@ -964,6 +963,10 @@ struct edp_vsc_psr {
 #define EDP_VSC_PSR_UPDATE_RFB		(1<<1)
 #define EDP_VSC_PSR_CRC_VALUES_VALID	(1<<2)
 
+#ifdef CONFIG_MOD_DISPLAY
+extern int dp_enhance_en;
+#endif
+
 int drm_dp_psr_setup_time(const u8 psr_cap[EDP_PSR_RECEIVER_CAP_SIZE]);
 
 static inline int
@@ -981,8 +984,18 @@ drm_dp_max_lane_count(const u8 dpcd[DP_RECEIVER_CAP_SIZE])
 static inline bool
 drm_dp_enhanced_frame_cap(const u8 dpcd[DP_RECEIVER_CAP_SIZE])
 {
+#ifdef CONFIG_MOD_DISPLAY
+	if (dp_enhance_en) {
+		return dpcd[DP_DPCD_REV] >= 0x11 &&
+			(dpcd[DP_MAX_LANE_COUNT] & DP_ENHANCED_FRAME_CAP);
+	} else {
+		pr_info("dp disable enhanced mode\n");
+		return false;
+	}
+#else
 	return dpcd[DP_DPCD_REV] >= 0x11 &&
 		(dpcd[DP_MAX_LANE_COUNT] & DP_ENHANCED_FRAME_CAP);
+#endif
 }
 
 static inline bool
